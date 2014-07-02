@@ -303,7 +303,7 @@ sel4utils_spawn_process(sel4utils_process_t *process, vka_t *vka, vspace_t *vspa
 
 int
 sel4utils_configure_process(sel4utils_process_t *process, vka_t *vka,
-        vspace_t *vspace, uint8_t priority, char *image_name)
+        vspace_t *vspace, uint8_t priority, seL4_CPtr sched_context, char *image_name)
 {
     sel4utils_process_config_t config = {
         .is_elf = true,
@@ -314,6 +314,7 @@ sel4utils_configure_process(sel4utils_process_t *process, vka_t *vka,
         .create_vspace = true,
         .create_fault_endpoint = true,
         .priority = priority,
+        .sched_context = sched_context,
 #ifndef CONFIG_KERNEL_STABLE
         .asid_pool = seL4_CapInitThreadASIDPool,
 #endif 
@@ -495,7 +496,7 @@ int sel4utils_configure_process_custom(sel4utils_process_t *process, vka_t *vka,
     /* create the thread, do this *after* elf-loading so that we don't clobber
      * the required virtual memory*/
     error = sel4utils_configure_thread(vka, &process->vspace, SEL4UTILS_ENDPOINT_SLOT,
-            config.priority, process->cspace.cptr, cspace_root_data, &process->thread);
+            config.priority, config.sched_context, process->cspace.cptr, cspace_root_data, &process->thread);
 
     if (error) {
         LOG_ERROR("ERROR: failed to configure thread for new process %d\n", error);

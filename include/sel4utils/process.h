@@ -100,6 +100,8 @@ typedef struct {
 #ifndef CONFIG_KERNEL_STABLE
     seL4_CPtr asid_pool;
 #endif
+
+    seL4_CPtr sched_context;
 } sel4utils_process_config_t;
 
 /**
@@ -176,12 +178,13 @@ int sel4utils_spawn_process(sel4utils_process_t *process, vka_t *vka, vspace_t *
  * @param vka          allocator to use to allocate objects.
  * @param vspace vspace allocator for the current vspace.
  * @param priority     priority to configure the process to run as.
+ * @param sched_context capabilty to a scheduling context
  * @param image_name   name of the elf image to load from the cpio archive.
  *
  * @return 0 on success, -1 on error.
  */
 int sel4utils_configure_process(sel4utils_process_t *process, vka_t *vka, vspace_t *vspace,
-        uint8_t priority, char *image_name);
+        uint8_t priority, seL4_CPtr sched_context, char *image_name);
 
 /**
  * Configure a process with more customisations (Create your own vspace, customise cspace size).
