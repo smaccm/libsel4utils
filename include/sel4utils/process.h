@@ -96,7 +96,8 @@ typedef struct {
     /* otherwise what is it */
     vka_object_t fault_endpoint;
 
-    int priority;
+    uint8_t priority;
+    uint8_t max_priority;
 #ifndef CONFIG_KERNEL_STABLE
     seL4_CPtr asid_pool;
 #endif

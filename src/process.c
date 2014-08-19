@@ -496,7 +496,7 @@ int sel4utils_configure_process_custom(sel4utils_process_t *process, vka_t *vka,
     /* create the thread, do this *after* elf-loading so that we don't clobber
      * the required virtual memory*/
     error = sel4utils_configure_thread(vka, &process->vspace, SEL4UTILS_ENDPOINT_SLOT,
-            config.priority, config.sched_context, process->cspace.cptr, cspace_root_data, &process->thread);
+            config.priority, config.max_priority, config.sched_context, process->cspace.cptr, cspace_root_data, &process->thread);
 
     if (error) {
         LOG_ERROR("ERROR: failed to configure thread for new process %d\n", error);

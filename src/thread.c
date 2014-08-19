@@ -28,7 +28,7 @@
 
 int
 sel4utils_configure_thread(vka_t *vka, vspace_t *alloc, seL4_CPtr fault_endpoint,
-        uint8_t priority, seL4_CPtr sched_context, seL4_CNode cspace, seL4_CapData_t cspace_root_data,
+        uint8_t priority, uint8_t maxPriority, seL4_CPtr sched_context, seL4_CNode cspace, seL4_CapData_t cspace_root_data,
         sel4utils_thread_t *res)
 {
     memset(res, 0, sizeof(sel4utils_thread_t));
@@ -48,7 +48,7 @@ sel4utils_configure_thread(vka_t *vka, vspace_t *alloc, seL4_CPtr fault_endpoint
     }
 
     seL4_CapData_t null_cap_data = {{0}};
-    error = seL4_TCB_Configure(res->tcb.cptr, fault_endpoint, priority, sched_context, cspace, cspace_root_data,
+    error = seL4_TCB_Configure(res->tcb.cptr, fault_endpoint, priority, maxPriority, sched_context, cspace, cspace_root_data,
             vspace_get_root(alloc), null_cap_data,
             res->ipc_buffer_addr, res->ipc_buffer);
 
@@ -207,7 +207,7 @@ int
 sel4utils_start_fault_handler(seL4_CPtr fault_endpoint, vka_t *vka, vspace_t *vspace, 
         uint8_t prio, seL4_CPtr sched_context, seL4_CPtr cspace, seL4_CapData_t cap_data, char *name, sel4utils_thread_t *res)
 {
-    int error = sel4utils_configure_thread(vka, vspace, 0, prio, sched_context, cspace, 
+    int error = sel4utils_configure_thread(vka, vspace, 0, prio, prio, sched_context, cspace, 
             cap_data, res);
 
     if (error) {

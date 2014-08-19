@@ -43,6 +43,8 @@ typedef struct sel4utils_thread {
  * @param alloc initialised vspace structure to allocate virtual memory with
  * @param fault_endpoint endpoint to set as the threads fault endpoint. Can be 0.
  * @param priority seL4 priority for the thread to be scheduled with.
+ * @param maxPriority the maximum priority this thread will be allowed to promote itself
+ *                    to or create other threads at.
  * @param sched_context for this thread 
  * @param cspace the root of the cspace to start the thread in
  * @param cspace_root_data data for cspace access
@@ -52,8 +54,8 @@ typedef struct sel4utils_thread {
  * @return 0 on success, -1 on failure. Use CONFIG_DEBUG to see error messages.
  */
 int sel4utils_configure_thread(vka_t *vka, vspace_t *alloc, seL4_CPtr fault_endpoint,
-        uint8_t priority, seL4_CPtr sched_context, seL4_CNode cspace, seL4_CapData_t cspace_root_data,
-        sel4utils_thread_t *res);
+        uint8_t priority, uint8_t maxPriority, seL4_CPtr sched_context, seL4_CNode cspace,
+        seL4_CapData_t cspace_root_data, sel4utils_thread_t *res);
 
 /**
  * Start a thread, allocating any resources required.
