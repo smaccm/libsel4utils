@@ -314,6 +314,7 @@ sel4utils_configure_process(sel4utils_process_t *process, vka_t *vka,
         .create_vspace = true,
         .create_fault_endpoint = true,
         .priority = priority,
+        .max_priority = priority,
         .sched_context = sched_context,
 #ifndef CONFIG_KERNEL_STABLE
         .asid_pool = seL4_CapInitThreadASIDPool,
