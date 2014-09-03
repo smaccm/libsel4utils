@@ -186,6 +186,8 @@ struct irq_server_thread {
     sel4utils_thread_t thread;
 /// Asynchronous endpoint object data
     vka_object_t aep;
+/// scheduling context
+    vka_object_t sc;
 /// Linked list chain
     struct irq_server_thread* next;
 };
@@ -228,7 +230,8 @@ _irq_thread_entry(struct irq_server_thread* st)
 /* Creates a new thread for an IRQ server */
 struct irq_server_thread*
 irq_server_thread_new(vspace_t* vspace, vka_t* vka, seL4_CPtr cspace, seL4_Word priority,
-                      seL4_CPtr irq_ctrl, seL4_Word label, seL4_CPtr sep) {
+                      seL4_SchedParams params, seL4_CPtr sched_ctrl, seL4_CPtr irq_ctrl,
+                      seL4_Word label, seL4_CPtr sep) {
     struct irq_server_thread* st;
     int err;
 
@@ -254,16 +257,37 @@ irq_server_thread_new(vspace_t* vspace, vka_t* vka, seL4_CPtr cspace, seL4_Word 
         return NULL;
     }
     st->node->aep = st->aep.cptr;
+    
+    /* Create a scheduling context */
+    err = vka_alloc_sched_context(vka, &st->sc);
+    if (err) {
+        LOG_ERROR("Failed to allocate sched context\n");
+        return NULL;
+    }
+
+    /* split semantics would be better, but that requires more infrastructure */
+    err = seL4_SchedControl_Configure(sched_ctrl, st->sc.cptr, params.period, 
+            params.relativeDeadline, params.execution, 
+            params.relativeDeadline / params.period, params.cbs, params.trigger);
+
+    if (err != seL4_NoError) {
+        LOG_ERROR("Failed to configure sched context\n");
+        vka_free_object(vka, &st->sc);
+        return NULL;
+    }
+
     /* Create the IRQ thread */
-    err = sel4utils_configure_thread(vka, vspace, seL4_CapNull, priority,
-                                     cspace, seL4_NilData, &st->thread);
+    err = sel4utils_configure_thread(vka, vspace, seL4_CapNull, priority, priority,
+                                     st->sc.cptr, cspace, seL4_NilData, &st->thread);
     if (err) {
         LOG_ERROR("Failed to configure IRQ server thread\n");
+        vka_free_object(vka, &st->sc);
         return NULL;
     }
     /* Start the thread */
     err = sel4utils_start_thread(&st->thread, (void*)_irq_thread_entry, st, NULL, 1);
     if (err) {
+        vka_free_object(vka, &st->sc);
         LOG_ERROR("Failed to start IRQ server thread\n");
         return NULL;
     }
@@ -284,6 +308,8 @@ struct irq_server {
     vka_t* vka;
     seL4_Word thread_priority;
     seL4_CPtr irq_ctrl_cap;
+    seL4_CPtr sc_ctrl;
+    seL4_SchedParams params;
     struct irq_server_thread* server_threads;
 };
 
@@ -325,7 +351,9 @@ irq_server_register_irq(irq_server_t irq_server, irq_t irq,
         /* Create the node */
         DIRQSERVER("Spawning new IRQ server thread\n");
         st = irq_server_thread_new(irq_server->vspace, irq_server->vka, irq_server->cspace,
-                                   irq_server->thread_priority, irq_server->irq_ctrl_cap,
+                                   irq_server->thread_priority,  
+                                   irq_server->params, irq_server->sc_ctrl, 
+                                   irq_server->irq_ctrl_cap,
                                    irq_server->label, irq_server->delivery_ep);
         if (st == NULL) {
             LOG_ERROR("Failed to create server thread\n");
@@ -349,7 +377,8 @@ irq_server_register_irq(irq_server_t irq_server, irq_t irq,
 /* Create a new IRQ server */
 int
 irq_server_new(vspace_t* vspace, vka_t* vka, seL4_CPtr cspace, seL4_Word priority,
-               seL4_CPtr irq_ctrl, seL4_CPtr sync_ep, seL4_Word label,
+               seL4_SchedParams params, seL4_CPtr sched_ctrl, seL4_CPtr irq_ctrl,
+               seL4_CPtr sync_ep, seL4_Word label,
                int nirqs, irq_server_t *ret_irq_server)
 {
     struct irq_server* irq_server;
@@ -377,8 +406,9 @@ irq_server_new(vspace_t* vspace, vka_t* vka, seL4_CPtr cspace, seL4_Word priorit
         server_thread = &irq_server->server_threads;
         n_nodes = (nirqs + NIRQS_PER_NODE - 1) / NIRQS_PER_NODE;
         for (i = 0; i < n_nodes; i++) {
-            *server_thread = irq_server_thread_new(vspace, vka, cspace, priority,
-                                                   irq_ctrl, label, sync_ep);
+            
+            *server_thread = irq_server_thread_new(vspace, vka, cspace, priority, params,
+                                                   sched_ctrl, irq_ctrl, label, sync_ep);
             server_thread = &(*server_thread)->next;
         }
     }

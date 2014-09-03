@@ -140,6 +140,8 @@ typedef struct irq_server* irq_server_t;
  *                         reaches a steady state.
  * @param[in] cspace       The cspace of the current thread
  * @param[in] priority     The priority of spawned threads.
+ * @param[in] params       Parameters to configure scheduling contexts with.    
+ * @param[in] sched_ctrl   Control cap for populating scheduling contexts.
  * @param[in] irq_ctrl_cap Control cap for spawning IRQ caps
  * @param[in] sync_ep      The synchronous endpoint to send IRQ's to
  * @param[in] label        A label to use when sending a synchronous IPC
@@ -151,7 +153,9 @@ typedef struct irq_server* irq_server_t;
  * @return                 0 on success
  */
 int irq_server_new(vspace_t* vspace, vka_t* vka, seL4_CPtr cspace, seL4_Word priority,
-                   seL4_CPtr irq_ctrl_cap, seL4_CPtr sync_ep, seL4_Word label,
+                   seL4_SchedParams params, seL4_CPtr sched_ctrl, 
+                   seL4_CPtr irq_ctrl_cap, seL4_CPtr sync_ep, 
+                   seL4_Word label,
                    int nirqs, irq_server_t* irq_server);
 
 /**
