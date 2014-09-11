@@ -14,6 +14,7 @@
 
 #include <sel4/sel4.h>
 #include <vka/object.h>
+#include <vka/capops.h>
 #include <sel4utils/mapping.h>
 #include <sel4utils/util.h>
 
@@ -107,7 +108,16 @@ page_map_retry:
         }
 
         /* now map in the frame again, if pagetable allocation was successful */
-        if (!error) {
+        if (!error || error == seL4_DeleteFirst) {
+            if (error == seL4_DeleteFirst) {
+                /* It's possible that in allocated the page table, we needed to allocate/map
+                * in some memory, which caused a page table to get mapped in at the
+                * same location we are wanting one. If this has happened then we can just
+                * delete this page table and try the frame mapping again */
+                vka_free_object(vka, pagetable);
+                *pagetable = (vka_object_t){0};
+            }
+
             error = seL4_ARCH_Page_Map(frame, pd, (seL4_Word) vaddr, rights, attr);
         } else {
             LOG_ERROR("Page table mapping failed, %d", error);
@@ -258,6 +268,54 @@ sel4utils_map_ept_page(vka_t *vka, seL4_CPtr pd, seL4_CPtr frame, seL4_Word vadd
 }
 
 
+#endif /* CONFIG_VTX */
 #endif
-#endif
+
+#ifdef CONFIG_LIB_SEL4_VSPACE
+
+/* Some more generic routines for helping with mapping */
+void *
+sel4utils_dup_and_map(vka_t *vka, vspace_t *vspace, seL4_CPtr page, size_t size_bits)
+{
+    int error;
+    cspacepath_t page_path;
+    cspacepath_t copy_path;
+    void *mapping;
+    /* First need to copy the cap */
+    error = vka_cspace_alloc_path(vka, &copy_path);
+    if (error != seL4_NoError) {
+        return NULL;
+    }
+    vka_cspace_make_path(vka, page, &page_path);
+    error = vka_cnode_copy(&copy_path, &page_path, seL4_AllRights);
+    if (error != seL4_NoError) {
+        vka_cspace_free(vka, copy_path.capPtr);
+        return NULL;
+    }
+    /* Now map it in */
+    mapping = vspace_map_pages(vspace, &copy_path.capPtr, NULL,  seL4_AllRights, 1, size_bits, 1);
+    if (!mapping) {
+        vka_cnode_delete(&copy_path);
+        vka_cspace_free(vka, copy_path.capPtr);
+        return NULL;
+    }
+    return mapping;
+}
+
+void
+sel4utils_unmap_dup(vka_t *vka, vspace_t *vspace, void *mapping, size_t size_bits)
+{
+    /* Grap a copy of the cap */
+    seL4_CPtr copy = vspace_get_cap(vspace, mapping);
+    cspacepath_t copy_path;
+    assert(copy);
+    /* now free the mapping */
+    vspace_unmap_pages(vspace, mapping, 1, size_bits, VSPACE_PRESERVE);
+    /* delete and free the cap */
+    vka_cspace_make_path(vka, copy, &copy_path);
+    vka_cnode_delete(&copy_path);
+    vka_cspace_free(vka, copy);
+}
+
+#endif /* CONFIG_LIB_SEL4_VSAPCE */
 #endif /* CONFIG_LIB_SEL4_VKA */

@@ -20,14 +20,28 @@
 #include <vka/vka.h>
 #include <vka/object.h>
 #include <vspace/vspace.h>
+#include <sel4utils/mapping.h>
 #include <sel4utils/thread.h>
 #include <sel4utils/util.h>
 #include <sel4utils/arch/util.h>
 
 #include "helpers.h"
 
+static int
+write_ipc_buffer_user_data(vka_t *vka, vspace_t *vspace, seL4_CPtr ipc_buf, uintptr_t buf_loc)
+{
+    void *mapping = sel4utils_dup_and_map(vka, vspace, ipc_buf, seL4_PageBits);
+    if (!mapping) {
+        return -1;
+    }
+    seL4_IPCBuffer *buffer = (seL4_IPCBuffer*)mapping;
+    buffer->userData = buf_loc;
+    sel4utils_unmap_dup(vka, vspace, mapping, seL4_PageBits);
+    return 0;
+}
+
 int
-sel4utils_configure_thread(vka_t *vka, vspace_t *alloc, seL4_CPtr fault_endpoint,
+sel4utils_configure_thread(vka_t *vka, vspace_t *parent, vspace_t *alloc, seL4_CPtr fault_endpoint,
         uint8_t priority, uint8_t maxPriority, seL4_CPtr sched_context, seL4_CNode cspace, seL4_CapData_t cspace_root_data,
         sel4utils_thread_t *res)
 {
@@ -44,6 +58,11 @@ sel4utils_configure_thread(vka_t *vka, vspace_t *alloc, seL4_CPtr fault_endpoint
 
     if (res->ipc_buffer_addr == 0) {
         LOG_ERROR("ipc buffer allocation failed");
+        return -1;
+    }
+
+    if (write_ipc_buffer_user_data(vka, parent, res->ipc_buffer, res->ipc_buffer_addr)) {
+        LOG_ERROR("failed to set user data word in IPC buffer");
         return -1;
     }
 
@@ -71,11 +90,15 @@ sel4utils_configure_thread(vka_t *vka, vspace_t *alloc, seL4_CPtr fault_endpoint
 
 int
 sel4utils_internal_start_thread(sel4utils_thread_t *thread, void *entry_point, void *arg0,
-        void *arg1, int resume, void *stack_top)
+        void *arg1, int resume, void *local_stack_top, void *dest_stack_top)
 {
     seL4_UserContext context = {0};
     size_t context_size = sizeof(seL4_UserContext) / sizeof(seL4_Word);
     int error;
+    /* one of these must be set */
+    assert(local_stack_top || dest_stack_top);
+    /* but not both of them */
+    assert(!(local_stack_top && dest_stack_top));
 
 #ifdef ARCH_IA32
 
@@ -83,15 +106,23 @@ sel4utils_internal_start_thread(sel4utils_thread_t *thread, void *entry_point, v
     context.rdi = (seL4_Word)arg0;
     context.rsi = (seL4_Word)arg1;
     context.rdx = (seL4_Word)thread->ipc_buffer_addr;
-    context.rsp = (seL4_Word) thread->stack_top;
+    if (dest_stack_top) {
+        context.rsp = (seL4_Word) dest_stack_top;
+    } else {
+        context.rsp = (seL4_Word) thread->stack_top;
+    }
     context.gs = IPCBUF_GDT_SELECTOR;
     context.rip = (seL4_Word)entry_point;
 #else
-    seL4_Word *stack_ptr = (seL4_Word *) stack_top;
-    stack_ptr[-5] = (seL4_Word) arg0;
-    stack_ptr[-4] = (seL4_Word) arg1;
-    stack_ptr[-3] = (seL4_Word) thread->ipc_buffer_addr;
-    context.esp = (seL4_Word) (thread->stack_top - 24);
+    if (local_stack_top) {
+        seL4_Word *stack_ptr = (seL4_Word *) local_stack_top;
+        stack_ptr[-5] = (seL4_Word) arg0;
+        stack_ptr[-4] = (seL4_Word) arg1;
+        stack_ptr[-3] = (seL4_Word) thread->ipc_buffer_addr;
+        context.esp = (seL4_Word) (thread->stack_top - 24);
+    } else {
+        context.esp = (seL4_Word) dest_stack_top;
+    }
     context.gs = IPCBUF_GDT_SELECTOR;
     context.eip = (seL4_Word)entry_point;
 #endif
@@ -101,7 +132,11 @@ sel4utils_internal_start_thread(sel4utils_thread_t *thread, void *entry_point, v
     error = seL4_TCB_WriteRegisters(thread->tcb.cptr, resume, 0, context_size, &context);
 #elif ARCH_ARM /* ARCH_IA32 */
     context.pc = (seL4_Word) entry_point;
-    context.sp = (seL4_Word) thread->stack_top;
+    if (dest_stack_top) {
+        context.sp = (seL4_Word) dest_stack_top;
+    } else {
+        context.sp = (seL4_Word) thread->stack_top;
+    }
     context.r0 = (seL4_Word) arg0;
     context.r1 = (seL4_Word) arg1;
     context.r2 = (seL4_Word) thread->ipc_buffer_addr;
@@ -124,7 +159,7 @@ int
 sel4utils_start_thread(sel4utils_thread_t *thread, void *entry_point, void *arg0, void *arg1,
         int resume)
 {
-    return sel4utils_internal_start_thread(thread, entry_point, arg0, arg1, resume, thread->stack_top);
+    return sel4utils_internal_start_thread(thread, entry_point, arg0, arg1, resume, thread->stack_top, NULL);
 }
 
 void
@@ -207,7 +242,7 @@ int
 sel4utils_start_fault_handler(seL4_CPtr fault_endpoint, vka_t *vka, vspace_t *vspace, 
         uint8_t prio, seL4_CPtr sched_context, seL4_CPtr cspace, seL4_CapData_t cap_data, char *name, sel4utils_thread_t *res)
 {
-    int error = sel4utils_configure_thread(vka, vspace, 0, prio, prio, sched_context, cspace, 
+    int error = sel4utils_configure_thread(vka, vspace, vspace, 0, prio, prio, sched_context, cspace, 
             cap_data, res);
 
     if (error) {
