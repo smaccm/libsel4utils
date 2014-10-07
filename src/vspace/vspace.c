@@ -260,6 +260,31 @@ sel4utils_map_page_ept(vspace_t *vspace, seL4_CPtr cap, void *vaddr, seL4_CapRig
 }
 #endif /* CONFIG_VTX */
 
+#ifdef CONFIG_IOMMU
+int
+sel4utils_map_page_iommu(vspace_t *vspace, seL4_CPtr cap, void *vaddr, seL4_CapRights rights,
+                       int cacheable, size_t size_bits)
+{
+    struct sel4utils_alloc_data *data = get_alloc_data(vspace);
+    int num_pts = 0;
+    /* The maximum number of page table levels current intel hardware implements is 6 */
+    vka_object_t pts[7];
+
+    int error = sel4utils_map_iospace_page(data->vka, data->page_directory, cap,
+                                       (seL4_Word) vaddr, rights, cacheable, size_bits, pts, &num_pts);
+    if (error) {
+        LOG_ERROR("Error mapping pages, bailing");
+        return -1;
+    }
+
+    for (int i = 0; i < num_pts; i++) {
+        vspace_maybe_call_allocated_object(vspace, pts[i]);
+    }
+
+    return seL4_NoError;
+}
+#endif /* CONFIG_IOMMU */
+
 static int
 map_page(vspace_t *vspace, seL4_CPtr cap, void *vaddr, seL4_CapRights rights,
          int cacheable, size_t size_bits)
@@ -610,6 +635,74 @@ sel4utils_free_reservation_by_vaddr(vspace_t *vspace, void *vaddr)
     reservation_t reservation;
     reservation.res = (void *) find_reserve(get_alloc_data(vspace), vaddr);
     sel4utils_free_reservation(vspace, reservation);
+}
+
+int
+sel4utils_move_resize_reservation(vspace_t *vspace, reservation_t reservation, void *vaddr,
+                                  size_t bytes)
+{
+    assert(reservation.res != NULL);
+    sel4utils_res_t *res = reservation.res;
+    sel4utils_alloc_data_t *data = get_alloc_data(vspace);
+
+    void *new_start = (void *) (seL4_Word) ROUND_DOWN((uint32_t) ((seL4_Word)vaddr), PAGE_SIZE_4K);
+    void *new_end = (void *) (seL4_Word) ROUND_UP((uint32_t) ((seL4_Word)vaddr) + bytes,
+                                                  PAGE_SIZE_4K);
+    void *v = NULL;
+
+    /* Sanity checks that newly asked reservation space is available. */
+    if (new_start < res->start) {
+        size_t prepending_region_size = (char*) res->start - (char*) new_start;
+        if (!check_empty_range(data->top_level, new_start,
+                    BYTES_TO_4K_PAGES(prepending_region_size), seL4_PageBits)) {
+            return -1;
+        }
+    }
+    if (new_end > res->end) {
+        size_t appending_region_size = (char*) new_end - (char*) res->end;
+        if (!check_empty_range(data->top_level, res->end,
+                    BYTES_TO_4K_PAGES(appending_region_size), seL4_PageBits)) {
+            return -2;
+        }
+    }
+
+    for (v = new_start; v < new_end; v += PAGE_SIZE_4K) {
+        if (v < res->start || v >= res->end) {
+            /* Any outside the reservation must be unreserved. */
+            int error UNUSED = reserve(vspace, v);
+            /* Should not cause any errors as we have just checked the regions are free. */
+            assert(!error);
+        } else {
+            v = res->end - PAGE_SIZE_4K;
+        }
+    }
+
+    for (v = res->start; v < res->end; v += PAGE_SIZE_4K) {
+        if (v < new_start || v >= new_end) {
+            /* Clear any regions that aren't reserved by the new region any more. */
+            if (get_cap(data->top_level, v) == RESERVED) {
+                clear(vspace, v);
+            }
+        } else {
+            v = new_end - PAGE_SIZE_4K;
+        }
+    }
+
+    char need_reinsert = 0;
+    if (res->start != new_start) {
+        need_reinsert = 1;
+    }
+
+    res->start = new_start;
+    res->end = new_end;
+
+    /* We may need to re-insert the reservation into the list to keep it sorted by start address. */
+    if (need_reinsert) {
+        remove_reservation(data, res);
+        insert_reservation(data, res);
+    }
+
+    return 0;
 }
 
 seL4_CPtr
