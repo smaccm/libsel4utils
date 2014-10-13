@@ -267,8 +267,7 @@ irq_server_thread_new(vspace_t* vspace, vka_t* vka, seL4_CPtr cspace, seL4_Word 
 
     /* split semantics would be better, but that requires more infrastructure */
     err = seL4_SchedControl_Configure(sched_ctrl, st->sc.cptr, params.period, 
-            params.relativeDeadline, params.execution, 
-            params.relativeDeadline / params.period, params.cbs, params.trigger, 0);
+            params.deadline, params.budget, params.flags); 
 
     if (err != seL4_NoError) {
         LOG_ERROR("Failed to configure sched context\n");
