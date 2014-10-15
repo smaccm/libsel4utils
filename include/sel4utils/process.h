@@ -104,7 +104,16 @@ typedef struct {
     seL4_CPtr asid_pool;
 #endif
 
+    /* create scheduling context or not? */
+    int create_sc;
+    /* params for created sc */
+    seL4_SchedParams_t sched_params;
+    /* sched control to populate sc with */
+    seL4_CPtr sched_control;
+    /* otherwise provide a sched control cap (can be seL4_CapNull) */
     seL4_CPtr sched_context;
+    /* endpoint for temporal faults (can be seL4_CapNull) */
+    seL4_CPtr temporal_fault_endpoint;
 } sel4utils_process_config_t;
 
 /**

@@ -15,6 +15,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 
 #include <sel4/sel4.h>
 #include <vka/vka.h>
@@ -40,10 +41,49 @@ write_ipc_buffer_user_data(vka_t *vka, vspace_t *vspace, seL4_CPtr ipc_buf, uint
     return 0;
 }
 
+int sel4utils_configure_passive_thread(vka_t *vka, vspace_t *parent, vspace_t *alloc, seL4_CPtr fault_endpoint,
+        uint8_t priority, seL4_CNode cspace, seL4_CapData_t cspace_root_data, sel4utils_thread_t *res) 
+{
+    sel4utils_thread_config_t config = {
+        .fault_endpoint = fault_endpoint,
+        .temporal_fault_endpoint = seL4_CapNull,
+        .priority = priority, 
+        .max_priority = priority,
+        .cspace = cspace, 
+        .cspace_root_data = cspace_root_data,
+        .create_sc = FALSE,
+    };
+    
+    return sel4utils_configure_thread_config(vka, parent, alloc, config, res);
+
+}
+
+int sel4utils_configure_thread(vka_t *vka, vspace_t *parent, vspace_t *alloc, seL4_CPtr fault_endpoint, 
+    uint8_t priority, seL4_CNode cspace, seL4_CapData_t cspace_root_data, seL4_CPtr sched_control, sel4utils_thread_t *res) {
+ 
+    sel4utils_thread_config_t config = {
+        .fault_endpoint = fault_endpoint,
+        .temporal_fault_endpoint = seL4_CapNull,
+        .priority = priority, 
+        .max_priority = priority,
+        .cspace = cspace, 
+        .cspace_root_data = cspace_root_data,
+        .create_sc = TRUE,
+        .sched_params = {
+            .period = SEL4UTILS_TIMESLICE,
+            .deadline = SEL4UTILS_TIMESLICE,
+            .budget = SEL4UTILS_TIMESLICE,
+            .flags = seL4_SchedFlags_new(seL4_TimeTriggered, seL4_HardCBS, 0),
+        },
+        .sched_control = sched_control,
+    };
+    
+    return sel4utils_configure_thread_config(vka, parent, alloc, config, res);
+}
+
 int
-sel4utils_configure_thread(vka_t *vka, vspace_t *parent, vspace_t *alloc, seL4_CPtr fault_endpoint, 
-        seL4_CPtr temporal_fault_ep, uint8_t priority, uint8_t maxPriority, seL4_CPtr sched_context, 
-        seL4_CNode cspace, seL4_CapData_t cspace_root_data, sel4utils_thread_t *res)
+sel4utils_configure_thread_config(vka_t *vka, vspace_t *parent, vspace_t *alloc, 
+        sel4utils_thread_config_t config, sel4utils_thread_t *res)
 {
     memset(res, 0, sizeof(sel4utils_thread_t));
 
@@ -66,10 +106,29 @@ sel4utils_configure_thread(vka_t *vka, vspace_t *parent, vspace_t *alloc, seL4_C
         return -1;
     }
 
+    seL4_CPtr sched_context = config.sched_context;
+    if (config.create_sc) {
+        error = vka_alloc_sched_context(vka, &res->sched_context);
+        if (error) {
+            LOG_ERROR("failed to allocate sched context");
+            return -1;
+        }
+        res->own_sc = 1;
+        sched_context = res->sched_context.cptr;
+        error = seL4_SchedControl_Configure(config.sched_control, sched_context, config.sched_params.period,
+                config.sched_params.deadline, config.sched_params.budget, config.sched_params.flags);
+        if (error) {
+            LOG_ERROR("failed to populate sched context");
+            sel4utils_clean_up_thread(vka, alloc, res);
+            return -1;
+        }
+    }
+        
     seL4_CapData_t null_cap_data = {{0}};
-    error = seL4_TCB_Configure(res->tcb.cptr, fault_endpoint, priority, maxPriority, sched_context, cspace, cspace_root_data,
+    error = seL4_TCB_Configure(res->tcb.cptr, config.fault_endpoint, config.priority, config.max_priority, 
+            sched_context, config.cspace, config.cspace_root_data,
             vspace_get_root(alloc), null_cap_data,
-            res->ipc_buffer_addr, res->ipc_buffer, temporal_fault_ep);
+            res->ipc_buffer_addr, res->ipc_buffer, config.temporal_fault_endpoint, config.criticality);
 
     if (error != seL4_NoError) {
         LOG_ERROR("TCB configure failed with seL4 error code %d", error);
@@ -177,6 +236,10 @@ sel4utils_clean_up_thread(vka_t *vka, vspace_t *alloc, sel4utils_thread_t *threa
         vspace_free_stack(alloc, thread->stack_top);
     }
 
+    if (thread->own_sc) {
+        vka_free_object(vka, &thread->sched_context);
+    }
+
     memset(thread, 0, sizeof(sel4utils_thread_t));
 }
 
@@ -240,10 +303,9 @@ fault_handler(char *name, seL4_CPtr endpoint) {
 
 int
 sel4utils_start_fault_handler(seL4_CPtr fault_endpoint, vka_t *vka, vspace_t *vspace, 
-        uint8_t prio, seL4_CPtr sched_context, seL4_CPtr cspace, seL4_CapData_t cap_data, char *name, sel4utils_thread_t *res)
+        uint8_t prio, seL4_CPtr cspace, seL4_CapData_t cap_data, char *name, sel4utils_thread_t *res)
 {
-    int error = sel4utils_configure_thread(vka, vspace, vspace, 0, 0, prio, prio, sched_context, cspace, 
-            cap_data, res);
+    int error = sel4utils_configure_passive_thread(vka, vspace, vspace, 0, prio, cspace, cap_data, res);
 
     if (error) {
         LOG_ERROR("Failed to configure fault handling thread\n");

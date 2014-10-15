@@ -230,7 +230,7 @@ _irq_thread_entry(struct irq_server_thread* st)
 /* Creates a new thread for an IRQ server */
 struct irq_server_thread*
 irq_server_thread_new(vspace_t* vspace, vka_t* vka, seL4_CPtr cspace, seL4_Word priority,
-                      seL4_SchedParams params, seL4_CPtr sched_ctrl, seL4_CPtr irq_ctrl,
+                      seL4_SchedParams_t params, seL4_CPtr sched_ctrl, seL4_CPtr irq_ctrl,
                       seL4_Word label, seL4_CPtr sep) {
     struct irq_server_thread* st;
     int err;
@@ -258,26 +258,19 @@ irq_server_thread_new(vspace_t* vspace, vka_t* vka, seL4_CPtr cspace, seL4_Word 
     }
     st->node->aep = st->aep.cptr;
     
-    /* Create a scheduling context */
-    err = vka_alloc_sched_context(vka, &st->sc);
-    if (err) {
-        LOG_ERROR("Failed to allocate sched context\n");
-        return NULL;
-    }
-
-    /* split semantics would be better, but that requires more infrastructure */
-    err = seL4_SchedControl_Configure(sched_ctrl, st->sc.cptr, params.period, 
-            params.deadline, params.budget, params.flags); 
-
-    if (err != seL4_NoError) {
-        LOG_ERROR("Failed to configure sched context\n");
-        vka_free_object(vka, &st->sc);
-        return NULL;
-    }
-
     /* Create the IRQ thread */
-    err = sel4utils_configure_thread(vka, vspace, vspace, seL4_CapNull, seL4_CapNull, priority, priority,
-                                     st->sc.cptr, cspace, seL4_NilData, &st->thread);
+    sel4utils_thread_config_t config = {
+        .create_sc = TRUE,
+        .sched_params = params,
+        .sched_control = sched_ctrl,
+        .priority = priority,
+        .max_priority = priority,
+        .cspace = cspace,
+        .cspace_root_data = seL4_NilData
+    };
+
+    err = sel4utils_configure_thread_config(vka, vspace, vspace, config, &st->thread);
+
     if (err) {
         LOG_ERROR("Failed to configure IRQ server thread\n");
         vka_free_object(vka, &st->sc);
@@ -308,7 +301,7 @@ struct irq_server {
     seL4_Word thread_priority;
     seL4_CPtr irq_ctrl_cap;
     seL4_CPtr sc_ctrl;
-    seL4_SchedParams params;
+    seL4_SchedParams_t params;
     struct irq_server_thread* server_threads;
 };
 
@@ -376,7 +369,7 @@ irq_server_register_irq(irq_server_t irq_server, irq_t irq,
 /* Create a new IRQ server */
 int
 irq_server_new(vspace_t* vspace, vka_t* vka, seL4_CPtr cspace, seL4_Word priority,
-               seL4_SchedParams params, seL4_CPtr sched_ctrl, seL4_CPtr irq_ctrl,
+               seL4_SchedParams_t params, seL4_CPtr sched_ctrl, seL4_CPtr irq_ctrl,
                seL4_CPtr sync_ep, seL4_Word label,
                int nirqs, irq_server_t *ret_irq_server)
 {

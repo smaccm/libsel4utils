@@ -188,6 +188,7 @@ sel4utils_spawn_process(sel4utils_process_t *process, vka_t *vka, vspace_t *vspa
     uintptr_t stack_top = (uintptr_t)process->thread.stack_top - 4;
     uintptr_t new_process_argv = 0;
     int error;
+
     /* write all the strings into the stack */
     if (argc > 0) {
         uintptr_t dest_argv[argc];
@@ -518,8 +519,20 @@ int sel4utils_configure_process_custom(sel4utils_process_t *process, vka_t *vka,
 
     /* create the thread, do this *after* elf-loading so that we don't clobber
      * the required virtual memory*/
-    error = sel4utils_configure_thread(vka, spawner_vspace, &process->vspace, SEL4UTILS_ENDPOINT_SLOT, 0,
-            config.priority, config.max_priority, config.sched_context, process->cspace.cptr, cspace_root_data, &process->thread);
+    sel4utils_thread_config_t thread_config = {
+        .fault_endpoint = SEL4UTILS_ENDPOINT_SLOT,
+        .temporal_fault_endpoint = config.temporal_fault_endpoint,
+        .priority = config.priority,
+        .max_priority = config.max_priority,
+        .create_sc = config.create_sc,
+        .sched_context = config.sched_context,
+        .sched_params = config.sched_params,
+        .sched_control = config.sched_control,
+        .cspace = process->cspace.cptr,
+        .cspace_root_data = cspace_root_data,
+    };
+
+    error = sel4utils_configure_thread_config(vka, spawner_vspace, &process->vspace, thread_config, &process->thread);
 
     if (error) {
         LOG_ERROR("ERROR: failed to configure thread for new process %d\n", error);

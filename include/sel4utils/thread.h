@@ -29,12 +29,43 @@
 
 #include <vspace/vspace.h>
 
+#include <utils/time.h>
+
+#define SEL4UTILS_TIMESLICE (CONFIG_TIMER_TICK_MS * CONFIG_TIME_SLICE * US_IN_MS)
+
 typedef struct sel4utils_thread {
     vka_object_t tcb;
     void *stack_top;
     seL4_CPtr ipc_buffer;
     seL4_Word ipc_buffer_addr;
+    int own_sc;
+    vka_object_t sched_context;
 } sel4utils_thread_t;
+
+typedef struct sel4utils_thread_config {
+    /* fault_endpoint endpoint to set as the threads fault endpoint. Can be seL4_CapNull. */
+    seL4_CPtr fault_endpoint;
+    /* endpoint to set as the threads temporal fault endpoint. Can be seL4_CapNull. */
+    seL4_CPtr temporal_fault_endpoint;
+    /* seL4 priority for the thread to be scheduled with. */
+    uint8_t priority;
+    /* max prio this thread can set itself or any other thread to */
+    uint8_t max_priority;
+    /* root of the cspace to start the thread in */
+    seL4_CNode cspace;
+    /* data for cspace access */
+    seL4_CapData_t cspace_root_data;
+    /* create scheduling context or not? */
+    int create_sc;
+    /* params for created sc */
+    seL4_SchedParams_t sched_params;
+    /* sched control to populate sc with */
+    seL4_CPtr sched_control;
+    /* otherwise provide a sched control cap (can be seL4_CapNull) */
+    seL4_CPtr sched_context;
+    /* criticality of this thread */
+    uint32_t criticality;
+} sel4utils_thread_config_t;
 
 /**
  * Configure a thread, allocating any resources required.
@@ -42,12 +73,11 @@ typedef struct sel4utils_thread {
  * @param vka initialised vka to allocate objects with
  * @param parent vspace structure of the thread calling this function, used for temporary mappings
  * @param alloc initialised vspace structure to allocate virtual memory with
- * @param fault_endpoint endpoint to set as the threads fault endpoint. Can be 0.
- * @param tempral_fault_endpoint endpoint to set as the threads temporal fault endpoint. Can be 0.
  * @param priority seL4 priority for the thread to be scheduled with.
  * @param maxPriority the maximum priority this thread will be allowed to promote itself
  *                    to or create other threads at.
- * @param sched_context for this thread 
+ * @param sched_control time capability to allow a scheduling context to be configured for this thread 
+ * (can be NULL is sched_context is intended to be null).
  * @param cspace the root of the cspace to start the thread in
  * @param cspace_root_data data for cspace access
  * @param res an uninitialised sel4utils_thread_t data structure that will be initialised
@@ -56,8 +86,34 @@ typedef struct sel4utils_thread {
  * @return 0 on success, -1 on failure. Use CONFIG_DEBUG to see error messages.
  */
 int sel4utils_configure_thread(vka_t *vka, vspace_t *parent, vspace_t *alloc, seL4_CPtr fault_endpoint,
-        seL4_CPtr temporal_fault_ep, uint8_t priority, uint8_t maxPriority, seL4_CPtr sched_context,
-        seL4_CNode cspace, seL4_CapData_t cspace_root_data, sel4utils_thread_t *res);
+        uint8_t priority, seL4_CNode cspace, seL4_CapData_t cspace_root_data, seL4_CPtr sched_control,
+        sel4utils_thread_t *res);
+
+
+/**
+ * Configure a passive thread (with no sched context), allocating any resources required.
+ *
+ * @param vka initialised vka to allocate objects with
+ * @param parent vspace structure of the thread calling this function, used for temporary mappings
+ * @param alloc initialised vspace structure to allocate virtual memory with
+ * @param priority seL4 priority for the thread to be scheduled with.
+ * @param maxPriority the maximum priority this thread will be allowed to promote itself
+ *                    to or create other threads at.
+ * @param cspace the root of the cspace to start the thread in
+ * @param cspace_root_data data for cspace access
+ * @param res an uninitialised sel4utils_thread_t data structure that will be initialised
+ *            after this operation.
+ *
+ * @return 0 on success, -1 on failure. Use CONFIG_DEBUG to see error messages.
+ */
+int sel4utils_configure_passive_thread(vka_t *vka, vspace_t *parent, vspace_t *alloc, seL4_CPtr fault_endpoint,
+        uint8_t priority, seL4_CNode cspace, seL4_CapData_t cspace_root_data, sel4utils_thread_t *res);
+
+/** 
+ * As per sel4utils_configure_thread, but using a config struct.
+ */
+int sel4utils_configure_thread_config(vka_t *vka, vspace_t *parent, vspace_t *alloc,
+                                      sel4utils_thread_config_t config, sel4utils_thread_t *res);
 
 /**
  * Start a thread, allocating any resources required.
@@ -120,6 +176,8 @@ void sel4utils_clean_up_thread(vka_t *vka, vspace_t *alloc, sel4utils_thread_t *
  * Start a fault handling thread that will print the name of the thread that faulted
  * as well as debugging information.
  *
+ * The fault handler will run on the scheduling context of the faulting thread.
+ *
  * @param fault_endpoint the fault_endpoint to wait on
  * @param vka allocator
  * @param vspace vspace (this library must be mapped into that vspace).
@@ -132,7 +190,7 @@ void sel4utils_clean_up_thread(vka_t *vka, vspace_t *alloc, sel4utils_thread_t *
  * @return 0 on success.
  */
 int sel4utils_start_fault_handler(seL4_CPtr fault_endpoint, vka_t *vka, vspace_t *vspace, 
-        uint8_t prio, seL4_CPtr sched_context, seL4_CPtr cspace, seL4_CapData_t data, char *name, sel4utils_thread_t *res);
+        uint8_t prio, seL4_CPtr cspace, seL4_CapData_t data, char *name, sel4utils_thread_t *res);
  
 
 /**

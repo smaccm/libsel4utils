@@ -153,7 +153,7 @@ typedef struct irq_server* irq_server_t;
  * @return                 0 on success
  */
 int irq_server_new(vspace_t* vspace, vka_t* vka, seL4_CPtr cspace, seL4_Word priority,
-                   seL4_SchedParams params, seL4_CPtr sched_ctrl, 
+                   seL4_SchedParams_t params, seL4_CPtr sched_ctrl, 
                    seL4_CPtr irq_ctrl_cap, seL4_CPtr sync_ep, 
                    seL4_Word label,
                    int nirqs, irq_server_t* irq_server);
