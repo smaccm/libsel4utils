@@ -257,7 +257,7 @@ irq_server_thread_new(vspace_t* vspace, vka_t* vka, seL4_CPtr cspace, seL4_Word 
         return NULL;
     }
     st->node->aep = st->aep.cptr;
-    
+
     /* Create the IRQ thread */
     sel4utils_thread_config_t config = {
         .create_sc = TRUE,
@@ -343,8 +343,8 @@ irq_server_register_irq(irq_server_t irq_server, irq_t irq,
         /* Create the node */
         DIRQSERVER("Spawning new IRQ server thread\n");
         st = irq_server_thread_new(irq_server->vspace, irq_server->vka, irq_server->cspace,
-                                   irq_server->thread_priority,  
-                                   irq_server->params, irq_server->sc_ctrl, 
+                                   irq_server->thread_priority,
+                                   irq_server->params, irq_server->sc_ctrl,
                                    irq_server->irq_ctrl_cap,
                                    irq_server->label, irq_server->delivery_ep);
         if (st == NULL) {
@@ -398,7 +398,7 @@ irq_server_new(vspace_t* vspace, vka_t* vka, seL4_CPtr cspace, seL4_Word priorit
         server_thread = &irq_server->server_threads;
         n_nodes = (nirqs + NIRQS_PER_NODE - 1) / NIRQS_PER_NODE;
         for (i = 0; i < n_nodes; i++) {
-            
+
             *server_thread = irq_server_thread_new(vspace, vka, cspace, priority, params,
                                                    sched_ctrl, irq_ctrl, label, sync_ep);
             server_thread = &(*server_thread)->next;
