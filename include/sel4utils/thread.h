@@ -47,10 +47,14 @@ typedef struct sel4utils_thread_config {
     seL4_CPtr fault_endpoint;
     /* endpoint to set as the threads temporal fault endpoint. Can be seL4_CapNull. */
     seL4_CPtr temporal_fault_endpoint;
-    /* seL4 priority for the thread to be scheduled with. */
-    uint8_t priority;
     /* max prio this thread can set itself or any other thread to */
     uint8_t max_priority;
+    /* seL4 priority for the thread to be scheduled with. */
+    uint8_t priority;
+    /* max criticality that this thread can set other threads to (including itself) */
+    uint32_t max_criticality;
+    /* criticality of this thread */
+    uint32_t criticality;
     /* root of the cspace to start the thread in */
     seL4_CNode cspace;
     /* data for cspace access */
@@ -63,8 +67,6 @@ typedef struct sel4utils_thread_config {
     seL4_CPtr sched_control;
     /* otherwise provide a sched control cap (can be seL4_CapNull) */
     seL4_CPtr sched_context;
-    /* criticality of this thread */
-    uint32_t criticality;
 } sel4utils_thread_config_t;
 
 /**
