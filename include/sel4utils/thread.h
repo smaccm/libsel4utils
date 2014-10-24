@@ -192,7 +192,8 @@ void sel4utils_clean_up_thread(vka_t *vka, vspace_t *alloc, sel4utils_thread_t *
  * @return 0 on success.
  */
 int sel4utils_start_fault_handler(seL4_CPtr fault_endpoint, vka_t *vka, vspace_t *vspace,
-                                  uint8_t prio, seL4_CPtr cspace, seL4_CapData_t data, char *name, sel4utils_thread_t *res);
+                                  uint8_t prio, seL4_CPtr cspace, seL4_CapData_t data, char *name,
+                                  seL4_CPtr sched_control, sel4utils_thread_t *res);
 
 
 /**

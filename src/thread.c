@@ -306,10 +306,27 @@ fault_handler(char *name, seL4_CPtr endpoint)
 
 int
 sel4utils_start_fault_handler(seL4_CPtr fault_endpoint, vka_t *vka, vspace_t *vspace,
-                              uint8_t prio, seL4_CPtr cspace, seL4_CapData_t cap_data, char *name, sel4utils_thread_t *res)
+                              uint8_t prio, seL4_CPtr cspace, seL4_CapData_t cap_data, char *name, 
+                              seL4_CPtr sched_control, sel4utils_thread_t *res)
 {
-    int error = sel4utils_configure_passive_thread(vka, vspace, vspace, 0, prio, cspace, cap_data, res);
 
+   sel4utils_thread_config_t config = {
+        .fault_endpoint = fault_endpoint,
+        .temporal_fault_endpoint = seL4_CapNull,
+        .priority = prio,
+        .cspace = cspace,
+        .cspace_root_data = cap_data,
+        .create_sc = TRUE,
+        .sched_control = sched_control,
+        .sched_params = {
+            .period = SEL4UTILS_TIMESLICE,
+            .deadline = SEL4UTILS_TIMESLICE,
+            .budget = SEL4UTILS_TIMESLICE,
+            .flags = seL4_SchedFlags_new(seL4_TimeTriggered, seL4_HardCBS, 0),
+        }
+    };
+
+    int error = sel4utils_configure_thread_config(vka, vspace, vspace, config, res);
     if (error) {
         LOG_ERROR("Failed to configure fault handling thread\n");
         return -1;
