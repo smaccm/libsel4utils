@@ -387,12 +387,17 @@ sel4utils_checkpoint_restore(sel4utils_checkpoint_t *checkpoint, int free_memory
     memcpy((void *) checkpoint->regs.sp, checkpoint->stack, stack_size);
 
     if (free_memory) {
-        free(checkpoint->stack);
+       sel4utils_free_checkpoint(checkpoint);
     }
 
     return error;
 }
 
+int
+sel4utils_free_checkpoint(sel4utils_checkpoint_t *checkpoint)
+{
+    free(checkpoint->stack);
+}
 
 
 #endif /* CONFIG_LIB_SEL4_VSPACE */
