@@ -69,6 +69,12 @@ typedef struct sel4utils_thread_config {
     seL4_CPtr sched_context;
 } sel4utils_thread_config_t;
 
+typedef struct sel4utils_checkpoint {
+    uint32_t *stack;
+    seL4_UserContext regs;
+    sel4utils_thread_t *thread;
+} sel4utils_checkpoint_t;
+
 /**
  * Configure a thread, allocating any resources required.
  *
@@ -173,6 +179,28 @@ int sel4utils_start_thread(sel4utils_thread_t *thread, void *entry_point, void *
  * @param thread the thread structure that was returned when the thread started
  */
 void sel4utils_clean_up_thread(vka_t *vka, vspace_t *alloc, sel4utils_thread_t *thread);
+
+/**
+ * Checkpoint a thread at its current state.
+ *
+ * @param thread     the thread to checkpoint
+ * @param checkpoint pointer to uninitialised checkpoint struct
+ * 
+ * @return 0 on success.
+ */
+int sel4utils_checkpoint_thread(sel4utils_thread_t *thread, sel4utils_checkpoint_t *checkpoint);
+
+/**
+ * Rollback a thread to a previous checkpoint. 
+ *
+ * @param checkpoint the previously saved checkpoint to restore.
+ * @param free       true if this checkpoint should free all memory allocated, i.e if the checkpoint
+ *                   will not be used again.
+ *
+ * @return 0 on success.
+ */
+int sel4utils_checkpoint_restore(sel4utils_checkpoint_t *checkpoint, int free);
+
 
 /**
  * Start a fault handling thread that will print the name of the thread that faulted
