@@ -393,7 +393,7 @@ sel4utils_checkpoint_restore(sel4utils_checkpoint_t *checkpoint, int free_memory
     return error;
 }
 
-int
+void
 sel4utils_free_checkpoint(sel4utils_checkpoint_t *checkpoint)
 {
     free(checkpoint->stack);

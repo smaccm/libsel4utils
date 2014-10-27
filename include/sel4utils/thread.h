@@ -204,7 +204,7 @@ int sel4utils_checkpoint_restore(sel4utils_checkpoint_t *checkpoint, int free);
 /**
  * Clean up a previously allocated checkpoint.
  */
-int sel4utils_free_checkpoint(sel4utils_checkpoint_t *checkpoint);
+void sel4utils_free_checkpoint(sel4utils_checkpoint_t *checkpoint);
 
 /**
  * Start a fault handling thread that will print the name of the thread that faulted
