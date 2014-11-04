@@ -352,7 +352,7 @@ sel4utils_checkpoint_thread(sel4utils_thread_t *thread, sel4utils_checkpoint_t *
         return error;
     }
     
-    stack_size = thread->stack_top - (void *) checkpoint->regs.sp;
+    stack_size = thread->stack_top - (void *) sel4utils_get_sp(checkpoint->regs);
     assert(stack_size <= CONFIG_SEL4UTILS_STACK_SIZE);
     
     checkpoint->stack = (uint32_t *) malloc(stack_size);
@@ -361,7 +361,7 @@ sel4utils_checkpoint_thread(sel4utils_thread_t *thread, sel4utils_checkpoint_t *
         return error;
     }
 
-    memcpy(checkpoint->stack, (void *) checkpoint->regs.sp, stack_size);
+    memcpy(checkpoint->stack, (void *) sel4utils_get_sp(checkpoint->regs), stack_size);
     checkpoint->thread = thread;
 
     return error;
@@ -375,6 +375,9 @@ sel4utils_checkpoint_restore(sel4utils_checkpoint_t *checkpoint, int free_memory
 
     assert(checkpoint != NULL);
 
+    stack_size = checkpoint->thread->stack_top - (void *) sel4utils_get_sp(checkpoint->regs);
+    memcpy((void *) sel4utils_get_sp(checkpoint->regs), checkpoint->stack, stack_size);
+    
     error = seL4_TCB_WriteRegisters(checkpoint->thread->tcb.cptr, 1, 0,
             sizeof(seL4_UserContext) / sizeof (seL4_Word), 
             &checkpoint->regs);
@@ -382,9 +385,6 @@ sel4utils_checkpoint_restore(sel4utils_checkpoint_t *checkpoint, int free_memory
         LOG_ERROR("Failed to restore registers of tcb while restoring checkpoint\n");
         return error;
     }
-
-    stack_size = checkpoint->thread->stack_top - (void *) checkpoint->regs.sp;
-    memcpy((void *) checkpoint->regs.sp, checkpoint->stack, stack_size);
 
     if (free_memory) {
        sel4utils_free_checkpoint(checkpoint);
