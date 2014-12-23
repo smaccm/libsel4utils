@@ -18,6 +18,7 @@
 #include <stdbool.h>
 
 #include <sel4/sel4.h>
+#include <sel4/messages.h>
 #include <vka/vka.h>
 #include <vka/object.h>
 #include <vspace/vspace.h>
@@ -280,6 +281,10 @@ sel4utils_print_fault_message(seL4_MessageInfo_t tag, char *thread_name)
                thread_name,
                seL4_GetMR(0),
                COLOR_NORMAL);
+        break;
+
+    case SEL4_TFIPC_LABEL:
+        printf("%sTemporal fault from [%s]\n", COLOR_ERROR, thread_name);
         break;
 
     default:
